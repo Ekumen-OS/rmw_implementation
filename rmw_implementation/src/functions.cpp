@@ -163,6 +163,22 @@ lookup_symbol(std::shared_ptr<rcpputils::SharedLibrary> lib, const std::string &
 }
 
 void *
+maybe_lookup_symbol(std::shared_ptr<rcpputils::SharedLibrary> lib, const std::string & symbol_name)
+{
+  if (!lib) {
+    if (!rmw_error_is_set()) {
+      RMW_SET_ERROR_MSG("no shared library to lookup");
+    }  // else assume library loading failed
+    return nullptr;
+  }
+
+  if (!lib->has_symbol(symbol_name)) {
+    return nullptr;
+  }
+  return lib->get_symbol(symbol_name);
+}
+
+void *
 get_symbol(const char * symbol_name)
 {
   try {
@@ -174,6 +190,17 @@ get_symbol(const char * symbol_name)
     return nullptr;
   }
 }
+
+void *
+maybe_get_symbol(const char * symbol_name)
+{
+  try {
+    return maybe_lookup_symbol(get_library(), symbol_name);
+  } catch (const std::exception & e) {
+    return nullptr;
+  }
+}
+
 
 #ifdef __cplusplus
 extern "C"
@@ -297,6 +324,14 @@ RMW_INTERFACE_FN(
     const rmw_qos_profile_t *, const rmw_publisher_options_t *))
 
 RMW_INTERFACE_FN(
+  rmw_create_publisher_with_constraints,
+  rmw_publisher_t *, nullptr,
+  6, ARG_TYPES(
+    const rmw_node_t *, const rosidl_message_type_support_t *,
+    const rosidl_message_type_constraints_t *, const char *,
+    const rmw_qos_profile_t *, const rmw_publisher_options_t *))
+
+RMW_INTERFACE_FN(
   rmw_destroy_publisher,
   rmw_ret_t, RMW_RET_ERROR,
   2, ARG_TYPES(rmw_node_t *, rmw_publisher_t *))
@@ -307,6 +342,15 @@ RMW_INTERFACE_FN(
   3, ARG_TYPES(
     const rmw_publisher_t *,
     const rosidl_message_type_support_t *,
+    void **))
+
+RMW_INTERFACE_FN(
+  rmw_borrow_loaned_message_with_constraints,
+  rmw_ret_t, RMW_RET_ERROR,
+  4, ARG_TYPES(
+    const rmw_publisher_t *,
+    const rosidl_message_type_support_t *,
+    const rosidl_message_type_constraints_t *,
     void **))
 
 RMW_INTERFACE_FN(
@@ -396,6 +440,14 @@ RMW_INTERFACE_FN(
     const rmw_qos_profile_t *, const rmw_subscription_options_t *))
 
 RMW_INTERFACE_FN(
+  rmw_create_subscription_with_constraints,
+  rmw_subscription_t *, nullptr,
+  6, ARG_TYPES(
+    const rmw_node_t *, const rosidl_message_type_support_t *,
+    const rosidl_message_type_constraints_t *, const char *,
+    const rmw_qos_profile_t *, const rmw_subscription_options_t *))
+
+RMW_INTERFACE_FN(
   rmw_destroy_subscription,
   rmw_ret_t, RMW_RET_ERROR,
   2, ARG_TYPES(rmw_node_t *, rmw_subscription_t *))
@@ -475,6 +527,20 @@ RMW_INTERFACE_FN(
   5, ARG_TYPES(
     const rmw_subscription_t *, void **, bool *, rmw_message_info_t *,
     rmw_subscription_allocation_t *))
+
+RMW_INTERFACE_FN(
+  rmw_take_loaned_message_with_constraints,
+  rmw_ret_t, RMW_RET_ERROR,
+  5, ARG_TYPES(
+    const rmw_subscription_t *, const rosidl_message_type_constraints_t *, void **, bool *,
+    rmw_subscription_allocation_t *))
+
+RMW_INTERFACE_FN(
+  rmw_take_loaned_message_with_info_and_constraints,
+  rmw_ret_t, RMW_RET_ERROR,
+  6, ARG_TYPES(
+    const rmw_subscription_t *, const rosidl_message_type_constraints_t *, void **, bool *,
+    rmw_message_info_t *, rmw_subscription_allocation_t *))
 
 RMW_INTERFACE_FN(
   rmw_return_loaned_message_from_subscription,
@@ -790,6 +856,7 @@ RMW_INTERFACE_FN(
 
 
 #define GET_SYMBOL(x) symbol_ ## x = get_symbol(#x);
+#define MAYBE_GET_SYMBOL(x) symbol_ ## x = maybe_get_symbol(#x);
 
 void prefetch_symbols(void)
 {
@@ -808,8 +875,10 @@ void prefetch_symbols(void)
   GET_SYMBOL(rmw_init_publisher_allocation)
   GET_SYMBOL(rmw_fini_publisher_allocation)
   GET_SYMBOL(rmw_create_publisher)
+  MAYBE_GET_SYMBOL(rmw_create_publisher_with_constraints)
   GET_SYMBOL(rmw_destroy_publisher)
   GET_SYMBOL(rmw_borrow_loaned_message)
+  MAYBE_GET_SYMBOL(rmw_borrow_loaned_message_with_constraints)
   GET_SYMBOL(rmw_return_loaned_message_from_publisher)
   GET_SYMBOL(rmw_publish)
   GET_SYMBOL(rmw_publish_loaned_message)
@@ -825,6 +894,7 @@ void prefetch_symbols(void)
   GET_SYMBOL(rmw_init_subscription_allocation)
   GET_SYMBOL(rmw_fini_subscription_allocation)
   GET_SYMBOL(rmw_create_subscription)
+  MAYBE_GET_SYMBOL(rmw_create_subscription_with_constraints)
   GET_SYMBOL(rmw_destroy_subscription)
   GET_SYMBOL(rmw_subscription_count_matched_publishers)
   GET_SYMBOL(rmw_subscription_get_actual_qos)
@@ -837,6 +907,8 @@ void prefetch_symbols(void)
   GET_SYMBOL(rmw_take_serialized_message_with_info)
   GET_SYMBOL(rmw_take_loaned_message)
   GET_SYMBOL(rmw_take_loaned_message_with_info)
+  MAYBE_GET_SYMBOL(rmw_take_loaned_message_with_constraints)
+  MAYBE_GET_SYMBOL(rmw_take_loaned_message_with_info_and_constraints)
   GET_SYMBOL(rmw_return_loaned_message_from_subscription)
   GET_SYMBOL(rmw_create_client)
   GET_SYMBOL(rmw_destroy_client)
@@ -928,8 +1000,10 @@ unload_library()
   symbol_rmw_init_publisher_allocation = nullptr;
   symbol_rmw_fini_publisher_allocation = nullptr;
   symbol_rmw_create_publisher = nullptr;
+  symbol_rmw_create_publisher_with_constraints = nullptr;
   symbol_rmw_destroy_publisher = nullptr;
   symbol_rmw_borrow_loaned_message = nullptr;
+  symbol_rmw_borrow_loaned_message_with_constraints = nullptr;
   symbol_rmw_return_loaned_message_from_publisher = nullptr;
   symbol_rmw_publish = nullptr;
   symbol_rmw_publish_loaned_message = nullptr;
@@ -945,6 +1019,7 @@ unload_library()
   symbol_rmw_init_subscription_allocation = nullptr;
   symbol_rmw_fini_subscription_allocation = nullptr;
   symbol_rmw_create_subscription = nullptr;
+  symbol_rmw_create_subscription_with_constraints = nullptr;
   symbol_rmw_destroy_subscription = nullptr;
   symbol_rmw_subscription_count_matched_publishers = nullptr;
   symbol_rmw_subscription_get_actual_qos = nullptr;
@@ -958,6 +1033,8 @@ unload_library()
   symbol_rmw_take_serialized_message_with_info = nullptr;
   symbol_rmw_take_loaned_message = nullptr;
   symbol_rmw_take_loaned_message_with_info = nullptr;
+  symbol_rmw_take_loaned_message_with_constraints = nullptr;
+  symbol_rmw_take_loaned_message_with_info_and_constraints = nullptr;
   symbol_rmw_return_loaned_message_from_subscription = nullptr;
   symbol_rmw_create_client = nullptr;
   symbol_rmw_destroy_client = nullptr;
