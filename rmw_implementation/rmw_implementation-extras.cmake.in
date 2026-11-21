@@ -51,6 +51,9 @@ if(@RMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION@)
       ${@RMW_IMPLEMENTATION@_LIBRARIES})
   endif()
 
+  target_link_libraries(rmw_implementation::rmw_implementation INTERFACE
+    rmw_implementation::rmw_context_dispatch)
+
   list(APPEND rmw_implementation_TARGETS
     rmw_implementation::rmw_implementation)
 else()

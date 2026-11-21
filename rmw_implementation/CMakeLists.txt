@@ -40,6 +40,41 @@ option(RMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION "\
 if(RMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION)
   message(STATUS "Runtime selection of RMW disabled; Only using "
     "'${RMW_IMPLEMENTATION}'")
+  find_package(rcpputils REQUIRED)
+  find_package(rcutils REQUIRED)
+  find_package(${RMW_IMPLEMENTATION} REQUIRED)
+  add_library(rmw_context_dispatch SHARED src/context_functions.cpp)
+  target_link_libraries(rmw_context_dispatch PRIVATE
+    rcpputils::rcpputils rcutils::rcutils rmw::rmw)
+  if(DEFINED ${RMW_IMPLEMENTATION}_TARGETS)
+    target_link_libraries(rmw_context_dispatch PRIVATE ${${RMW_IMPLEMENTATION}_TARGETS})
+  elseif(TARGET ${RMW_IMPLEMENTATION}::${RMW_IMPLEMENTATION})
+    target_link_libraries(rmw_context_dispatch PRIVATE
+      ${RMW_IMPLEMENTATION}::${RMW_IMPLEMENTATION})
+  else()
+    target_include_directories(rmw_context_dispatch PRIVATE
+      ${${RMW_IMPLEMENTATION}_INCLUDE_DIRS})
+    target_compile_definitions(rmw_context_dispatch PRIVATE
+      ${${RMW_IMPLEMENTATION}_DEFINITIONS})
+    target_link_libraries(rmw_context_dispatch PRIVATE ${${RMW_IMPLEMENTATION}_LIBRARIES})
+  endif()
+  target_compile_definitions(rmw_context_dispatch PRIVATE
+    "RMW_CONTEXT_FIXED_IMPLEMENTATION=${RMW_IMPLEMENTATION}")
+  configure_rmw_library(rmw_context_dispatch)
+  install(TARGETS rmw_context_dispatch EXPORT export_rmw_context_dispatch
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin)
+  ament_export_targets(export_rmw_context_dispatch)
+  if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+    ament_add_gtest(test_context_fixed test/test_context_fixed.cpp
+      ENV RMW_IMPLEMENTATION=invalid_implementation)
+    target_compile_definitions(test_context_fixed PRIVATE
+      "DEFAULT_RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}")
+    target_link_libraries(test_context_fixed rmw_context_dispatch rcpputils::rcpputils
+      rcutils::rcutils rmw::rmw)
+  endif()
 else()
   message(STATUS "Runtime selection of RMW enabled")
 
@@ -49,7 +84,8 @@ else()
   find_package(rmw REQUIRED)
 
   add_library(${PROJECT_NAME} SHARED
-    src/functions.cpp)
+    src/functions.cpp
+    src/context_functions.cpp)
   target_link_libraries(${PROJECT_NAME} PUBLIC
     rmw::rmw)
   target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -85,6 +121,16 @@ else()
       rcutils::rcutils
       rmw::rmw
     )
+
+    add_library(rmw_context_test_backend SHARED test/context_test_backend.cpp)
+    target_link_libraries(rmw_context_test_backend rmw::rmw rcutils::rcutils)
+    configure_rmw_library(rmw_context_test_backend)
+    ament_add_gtest(test_context_dispatch test/test_context_dispatch.cpp
+      ENV RMW_IMPLEMENTATION=rmw_context_test_backend
+      APPEND_LIBRARY_DIRS $<TARGET_FILE_DIR:rmw_context_test_backend>)
+    target_link_libraries(test_context_dispatch ${PROJECT_NAME} rmw::rmw
+      rcpputils::rcpputils rcutils::rcutils)
+    add_dependencies(test_context_dispatch rmw_context_test_backend)
 
     find_package(performance_test_fixture REQUIRED)
 

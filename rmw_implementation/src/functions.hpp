@@ -25,6 +25,8 @@
 RMW_IMPLEMENTATION_DEFAULT_VISIBILITY
 std::shared_ptr<rcpputils::SharedLibrary> load_library();
 
+std::shared_ptr<rcpputils::SharedLibrary> get_library();
+
 RMW_IMPLEMENTATION_DEFAULT_VISIBILITY
 void * lookup_symbol(
   std::shared_ptr<rcpputils::SharedLibrary> lib,

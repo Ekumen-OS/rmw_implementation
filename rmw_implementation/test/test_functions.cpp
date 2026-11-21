@@ -20,6 +20,7 @@
 #include "rcutils/testing/fault_injection.h"
 
 #include "rmw/error_handling.h"
+#include "rmw/rmw.h"
 
 #include "../src/functions.hpp"
 
@@ -58,4 +59,60 @@ TEST(Functions, load_and_lookup_with_internal_errors) {
 TEST(Functions, nominal_prefetch_and_unload) {
   prefetch_symbols();
   unload_library();
+}
+
+TEST(Functions, unsupported_message_contexts_are_not_ignored) {
+  auto library = load_library();
+  ASSERT_NE(nullptr, library) << rmw_get_error_string().str;
+  if (library->has_symbol("rmw_create_publisher_with_context") ||
+    library->has_symbol("rmw_create_subscription_with_context") ||
+    library->has_symbol("rmw_borrow_loaned_message_with_context") ||
+    library->has_symbol("rmw_take_loaned_message_with_context") ||
+    library->has_symbol("rmw_take_loaned_message_with_info_and_context"))
+  {
+    GTEST_SKIP() << "Selected middleware implements message contexts";
+  }
+  rosidl_runtime_c__message_context_t context{};
+  context.constraints.max_total_size = 100;
+  EXPECT_EQ(nullptr, rmw_create_publisher_with_context(
+      nullptr, nullptr, &context, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  EXPECT_EQ(nullptr, rmw_create_subscription_with_context(
+      nullptr, nullptr, &context, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  EXPECT_EQ(RMW_RET_UNSUPPORTED, rmw_borrow_loaned_message_with_context(
+      nullptr, nullptr, &context, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  EXPECT_EQ(RMW_RET_UNSUPPORTED, rmw_take_loaned_message_with_context(
+      nullptr, &context, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  EXPECT_EQ(RMW_RET_UNSUPPORTED, rmw_take_loaned_message_with_info_and_context(
+      nullptr, &context, nullptr, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+}
+
+TEST(Functions, null_message_context_uses_legacy_loan_entry_points) {
+  auto library = load_library();
+  ASSERT_NE(nullptr, library) << rmw_get_error_string().str;
+  if (library->has_symbol("rmw_borrow_loaned_message_with_context") ||
+    library->has_symbol("rmw_take_loaned_message_with_info_and_context"))
+  {
+    GTEST_SKIP() << "Selected middleware implements message contexts";
+  }
+  auto borrow_result = rmw_borrow_loaned_message(nullptr, nullptr, nullptr);
+  rmw_reset_error();
+  EXPECT_EQ(borrow_result, rmw_borrow_loaned_message_with_context(
+      nullptr, nullptr, nullptr, nullptr));
+  rmw_reset_error();
+  auto take_result = rmw_take_loaned_message_with_info(
+    nullptr, nullptr, nullptr, nullptr, nullptr);
+  rmw_reset_error();
+  EXPECT_EQ(take_result, rmw_take_loaned_message_with_info_and_context(
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
+  rmw_reset_error();
 }
