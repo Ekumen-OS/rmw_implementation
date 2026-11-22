@@ -17,6 +17,7 @@
 
 #include "rcpputils/shared_library.hpp"
 #include "rmw/error_handling.h"
+#include "rmw/impl/cpp/macros.hpp"
 #include "rmw/rmw.h"
 
 #ifndef RMW_CONTEXT_FIXED_IMPLEMENTATION
@@ -51,6 +52,22 @@ get_optional_symbol(const char * symbol_name, bool & failed)
     failed = true;
     return nullptr;
   }
+}
+
+template<typename Function, typename ... Args>
+static rmw_ret_t
+call_optional_service_loan(const char * name, Args ... args)
+{
+  bool failed;
+  auto symbol = get_optional_symbol(name, failed);
+  if (failed) {
+    return RMW_RET_ERROR;
+  }
+  if (!symbol) {
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("middleware does not support %s", name);
+    return RMW_RET_UNSUPPORTED;
+  }
+  return reinterpret_cast<Function>(symbol)(args ...);
 }
 
 extern "C"
@@ -176,5 +193,175 @@ rmw_take_loaned_message_with_info_and_context(
   }
   RMW_SET_ERROR_MSG("middleware does not support loan message contexts");
   return RMW_RET_UNSUPPORTED;
+}
+
+rmw_client_t *
+rmw_create_client_with_context(
+  const rmw_node_t * node,
+  const rosidl_service_type_support_t * type_support,
+  const rosidl_runtime_c__message_context_t * request_context,
+  const rosidl_runtime_c__message_context_t * response_context,
+  const char * service_name,
+  const rmw_qos_profile_t * qos)
+{
+  bool failed;
+  auto symbol = get_optional_symbol("rmw_create_client_with_context", failed);
+  if (failed) {
+    return nullptr;
+  }
+  if (!symbol) {
+    RMW_SET_ERROR_MSG("middleware does not support client message contexts");
+    return nullptr;
+  }
+  return reinterpret_cast<decltype(& rmw_create_client_with_context)>(symbol)(
+    node, type_support, request_context, response_context, service_name, qos);
+}
+
+rmw_service_t *
+rmw_create_service_with_context(
+  const rmw_node_t * node,
+  const rosidl_service_type_support_t * type_support,
+  const rosidl_runtime_c__message_context_t * request_context,
+  const rosidl_runtime_c__message_context_t * response_context,
+  const char * service_name,
+  const rmw_qos_profile_t * qos)
+{
+  bool failed;
+  auto symbol = get_optional_symbol("rmw_create_service_with_context", failed);
+  if (failed) {
+    return nullptr;
+  }
+  if (!symbol) {
+    RMW_SET_ERROR_MSG("middleware does not support service message contexts");
+    return nullptr;
+  }
+  return reinterpret_cast<decltype(& rmw_create_service_with_context)>(symbol)(
+    node, type_support, request_context, response_context, service_name, qos);
+}
+
+rmw_ret_t
+rmw_borrow_loaned_request(
+  const rmw_client_t * client, const rosidl_runtime_c__message_context_t * context, void ** request)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(request, RMW_RET_INVALID_ARGUMENT);
+  if (*request) {
+    RMW_SET_ERROR_MSG("request output must be null");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  return call_optional_service_loan<decltype(&rmw_borrow_loaned_request)>(
+    "rmw_borrow_loaned_request", client, context, request);
+}
+
+rmw_ret_t
+rmw_send_loaned_request(const rmw_client_t * client, void ** request, int64_t * sequence_id)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(request, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*request, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(sequence_id, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_send_loaned_request)>(
+    "rmw_send_loaned_request", client, request, sequence_id);
+}
+
+rmw_ret_t
+rmw_return_loaned_request_from_client(const rmw_client_t * client, void ** request)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(request, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*request, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_return_loaned_request_from_client)>(
+    "rmw_return_loaned_request_from_client", client, request);
+}
+
+rmw_ret_t
+rmw_take_loaned_response(
+  const rmw_client_t * client, const rosidl_runtime_c__message_context_t * context,
+  rmw_service_info_t * header, void ** response, bool * taken)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(header, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(response, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
+  if (*response) {
+    RMW_SET_ERROR_MSG("response output must be null");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  return call_optional_service_loan<decltype(&rmw_take_loaned_response)>(
+    "rmw_take_loaned_response", client, context, header, response, taken);
+}
+
+rmw_ret_t
+rmw_return_loaned_response_from_client(const rmw_client_t * client, void ** response)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(response, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*response, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_return_loaned_response_from_client)>(
+    "rmw_return_loaned_response_from_client", client, response);
+}
+
+rmw_ret_t
+rmw_take_loaned_request(
+  const rmw_service_t * service, const rosidl_runtime_c__message_context_t * context,
+  rmw_service_info_t * header, void ** request, bool * taken)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(header, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(request, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
+  if (*request) {
+    RMW_SET_ERROR_MSG("request output must be null");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  return call_optional_service_loan<decltype(&rmw_take_loaned_request)>(
+    "rmw_take_loaned_request", service, context, header, request, taken);
+}
+
+rmw_ret_t
+rmw_return_loaned_request_from_service(const rmw_service_t * service, void ** request)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(request, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*request, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_return_loaned_request_from_service)>(
+    "rmw_return_loaned_request_from_service", service, request);
+}
+
+rmw_ret_t
+rmw_borrow_loaned_response(
+  const rmw_service_t * service, const rosidl_runtime_c__message_context_t * context,
+  void ** response)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(response, RMW_RET_INVALID_ARGUMENT);
+  if (*response) {
+    RMW_SET_ERROR_MSG("response output must be null");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  return call_optional_service_loan<decltype(&rmw_borrow_loaned_response)>(
+    "rmw_borrow_loaned_response", service, context, response);
+}
+
+rmw_ret_t
+rmw_send_loaned_response(
+  const rmw_service_t * service, const rmw_request_id_t * header, void ** response)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(header, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(response, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*response, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_send_loaned_response)>(
+    "rmw_send_loaned_response", service, header, response);
+}
+
+rmw_ret_t
+rmw_return_loaned_response_from_service(const rmw_service_t * service, void ** response)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(response, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(*response, RMW_RET_INVALID_ARGUMENT);
+  return call_optional_service_loan<decltype(&rmw_return_loaned_response_from_service)>(
+    "rmw_return_loaned_response_from_service", service, response);
 }
 }  // extern "C"

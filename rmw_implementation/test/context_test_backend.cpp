@@ -19,6 +19,12 @@ namespace
 {
 rmw_publisher_t publisher{};
 rmw_subscription_t subscription{};
+rmw_client_t client{};
+rmw_service_t service{};
+size_t request_limit;
+size_t response_limit;
+int request_sample;
+int response_sample;
 size_t publisher_limit;
 size_t subscription_limit;
 size_t publisher_specific_limit;
@@ -108,5 +114,130 @@ rmw_take_loaned_message_with_context(
   rmw_message_info_t info{};
   return rmw_take_loaned_message_with_info_and_context(
     handle, context, message, taken, &info, allocation);
+}
+
+rmw_client_t *
+rmw_create_client_with_context(
+  const rmw_node_t *, const rosidl_service_type_support_t *,
+  const rosidl_runtime_c__message_context_t * request,
+  const rosidl_runtime_c__message_context_t * response,
+  const char *, const rmw_qos_profile_t *)
+{
+  request_limit = request->constraints.max_total_size;
+  response_limit = response->constraints.max_total_size;
+  return &client;
+}
+
+rmw_service_t *
+rmw_create_service_with_context(
+  const rmw_node_t *, const rosidl_service_type_support_t *,
+  const rosidl_runtime_c__message_context_t * request,
+  const rosidl_runtime_c__message_context_t * response,
+  const char *, const rmw_qos_profile_t *)
+{
+  request_limit = request->constraints.max_total_size;
+  response_limit = response->constraints.max_total_size;
+  return &service;
+}
+
+rmw_ret_t
+rmw_borrow_loaned_request(
+  const rmw_client_t *, const rosidl_runtime_c__message_context_t * context, void ** request)
+{
+  if (!compatible(context, request_limit, 0)) {
+    RMW_SET_ERROR_MSG("request baseline exceeded");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  *request = &request_sample;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_send_loaned_request(const rmw_client_t *, void ** request, int64_t * sequence_id)
+{
+  *request = nullptr;
+  *sequence_id = 42;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_return_loaned_request_from_client(const rmw_client_t *, void ** request)
+{
+  *request = nullptr;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_take_loaned_response(
+  const rmw_client_t *, const rosidl_runtime_c__message_context_t * context,
+  rmw_service_info_t * header, void ** response, bool * taken)
+{
+  if (!compatible(context, response_limit, 0)) {
+    RMW_SET_ERROR_MSG("response baseline exceeded");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  *response = &response_sample;
+  *taken = true;
+  header->request_id.sequence_number = 42;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_return_loaned_response_from_client(const rmw_client_t *, void ** response)
+{
+  *response = nullptr;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_take_loaned_request(
+  const rmw_service_t *, const rosidl_runtime_c__message_context_t * context,
+  rmw_service_info_t * header, void ** request, bool * taken)
+{
+  if (!compatible(context, request_limit, 0)) {
+    RMW_SET_ERROR_MSG("request baseline exceeded");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  *request = &request_sample;
+  *taken = true;
+  header->request_id.sequence_number = 42;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_return_loaned_request_from_service(const rmw_service_t *, void ** request)
+{
+  *request = nullptr;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_borrow_loaned_response(
+  const rmw_service_t *, const rosidl_runtime_c__message_context_t * context, void ** response)
+{
+  if (!compatible(context, response_limit, 0)) {
+    RMW_SET_ERROR_MSG("response baseline exceeded");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  *response = &response_sample;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_send_loaned_response(const rmw_service_t *, const rmw_request_id_t * header, void ** response)
+{
+  if (header->sequence_number != 42) {
+    RMW_SET_ERROR_MSG("wrong request identity");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  *response = nullptr;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_return_loaned_response_from_service(const rmw_service_t *, void ** response)
+{
+  *response = nullptr;
+  return RMW_RET_OK;
 }
 }  // extern "C"

@@ -76,3 +76,63 @@ TEST(ContextDispatch, independent_retained_baselines_and_refinements) {
       subscription, nullptr, &message, &taken, &info, nullptr));
   rmw_reset_error();
 }
+
+TEST(ContextDispatch, service_loan_identity_constraints_and_consumption) {
+  rosidl_runtime_c__message_context_t request_context{};
+  rosidl_runtime_c__message_context_t response_context{};
+  request_context.constraints.max_total_size = 100;
+  response_context.constraints.max_total_size = 50;
+  auto client = rmw_create_client_with_context(
+    nullptr, nullptr, &request_context, &response_context, nullptr, nullptr);
+  auto service = rmw_create_service_with_context(
+    nullptr, nullptr, &request_context, &response_context, nullptr, nullptr);
+  ASSERT_NE(nullptr, client);
+  ASSERT_NE(nullptr, service);
+  request_context.constraints.max_total_size = 1;
+  response_context.constraints.max_total_size = 1;
+
+  rosidl_runtime_c__message_context_t refinement{};
+  refinement.constraints.max_total_size = 75;
+  void * request = nullptr;
+  ASSERT_EQ(RMW_RET_OK, rmw_borrow_loaned_request(client, &refinement, &request));
+  EXPECT_EQ(RMW_RET_INVALID_ARGUMENT, rmw_borrow_loaned_request(client, nullptr, &request));
+  rmw_reset_error();
+  int64_t sequence = 0;
+  ASSERT_EQ(RMW_RET_OK, rmw_send_loaned_request(client, &request, &sequence));
+  EXPECT_EQ(nullptr, request);
+  EXPECT_EQ(42, sequence);
+  ASSERT_EQ(RMW_RET_OK, rmw_borrow_loaned_request(client, nullptr, &request));
+  ASSERT_EQ(RMW_RET_OK, rmw_return_loaned_request_from_client(client, &request));
+  EXPECT_EQ(nullptr, request);
+
+  rmw_service_info_t header{};
+  bool taken = false;
+  ASSERT_EQ(RMW_RET_OK, rmw_take_loaned_request(service, &refinement, &header, &request, &taken));
+  ASSERT_TRUE(taken);
+  EXPECT_EQ(sequence, header.request_id.sequence_number);
+  ASSERT_EQ(RMW_RET_OK, rmw_return_loaned_request_from_service(service, &request));
+  EXPECT_EQ(nullptr, request);
+
+  void * response = nullptr;
+  EXPECT_EQ(RMW_RET_INVALID_ARGUMENT, rmw_borrow_loaned_response(service, &refinement, &response));
+  EXPECT_EQ(nullptr, response);
+  rmw_reset_error();
+  refinement.constraints.max_total_size = 40;
+  ASSERT_EQ(RMW_RET_OK, rmw_borrow_loaned_response(service, &refinement, &response));
+  rmw_request_id_t wrong = header.request_id;
+  wrong.sequence_number = 0;
+  EXPECT_EQ(RMW_RET_INVALID_ARGUMENT, rmw_send_loaned_response(service, &wrong, &response));
+  EXPECT_NE(nullptr, response);
+  rmw_reset_error();
+  ASSERT_EQ(RMW_RET_OK, rmw_send_loaned_response(service, &header.request_id, &response));
+  EXPECT_EQ(nullptr, response);
+  ASSERT_EQ(RMW_RET_OK, rmw_borrow_loaned_response(service, nullptr, &response));
+  ASSERT_EQ(RMW_RET_OK, rmw_return_loaned_response_from_service(service, &response));
+  EXPECT_EQ(nullptr, response);
+  taken = false;
+  ASSERT_EQ(RMW_RET_OK, rmw_take_loaned_response(client, &refinement, &header, &response, &taken));
+  EXPECT_TRUE(taken);
+  EXPECT_EQ(sequence, header.request_id.sequence_number);
+  ASSERT_EQ(RMW_RET_OK, rmw_return_loaned_response_from_client(client, &response));
+  EXPECT_EQ(nullptr, response);
+}

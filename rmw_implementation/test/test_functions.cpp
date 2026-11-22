@@ -104,6 +104,7 @@ TEST(Functions, null_message_context_uses_legacy_loan_entry_points) {
   {
     GTEST_SKIP() << "Selected middleware implements message contexts";
   }
+
   auto borrow_result = rmw_borrow_loaned_message(nullptr, nullptr, nullptr);
   rmw_reset_error();
   EXPECT_EQ(borrow_result, rmw_borrow_loaned_message_with_context(
@@ -114,5 +115,27 @@ TEST(Functions, null_message_context_uses_legacy_loan_entry_points) {
   rmw_reset_error();
   EXPECT_EQ(take_result, rmw_take_loaned_message_with_info_and_context(
       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
+  rmw_reset_error();
+}
+
+TEST(Functions, unsupported_service_loans_do_not_consume_or_fallback) {
+  auto library = load_library();
+  ASSERT_NE(nullptr, library) << rmw_get_error_string().str;
+  if (library->has_symbol("rmw_create_client_with_context") ||
+    library->has_symbol("rmw_send_loaned_request"))
+  {
+    GTEST_SKIP() << "Selected middleware implements service loans";
+  }
+  EXPECT_EQ(nullptr, rmw_create_client_with_context(
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  rmw_client_t client{};
+  int value = 0;
+  void * loan = &value;
+  int64_t sequence = 0;
+  EXPECT_EQ(RMW_RET_UNSUPPORTED, rmw_send_loaned_request(&client, &loan, &sequence));
+  EXPECT_EQ(&value, loan);
+  EXPECT_TRUE(rmw_error_is_set());
   rmw_reset_error();
 }
