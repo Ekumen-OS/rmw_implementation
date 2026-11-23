@@ -70,8 +70,117 @@ call_optional_service_loan(const char * name, Args ... args)
   return reinterpret_cast<Function>(symbol)(args ...);
 }
 
+template<typename Function, typename Endpoint>
+static rmw_ret_t
+call_optional_service_capability(const char * name, const Endpoint * endpoint, bool * available)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(endpoint, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(available, RMW_RET_INVALID_ARGUMENT);
+  bool failed;
+  auto symbol = get_optional_symbol(name, failed);
+  if (failed) {
+    return RMW_RET_ERROR;
+  }
+  if (!symbol) {
+    *available = false;
+    return RMW_RET_OK;
+  }
+  return reinterpret_cast<Function>(symbol)(endpoint, available);
+}
+
 extern "C"
 {
+rmw_ret_t
+rmw_region_loan_entry_points_available(rmw_region_loan_role_t role, bool * available)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(available, RMW_RET_INVALID_ARGUMENT);
+  const char * const publisher[] = {
+    "rmw_create_publisher_with_context", "rmw_borrow_loaned_message_with_context"};
+  const char * const subscription[] = {
+    "rmw_create_subscription_with_context", "rmw_take_loaned_message_with_info_and_context"};
+  const char * const client[] = {
+    "rmw_create_client_with_context", "rmw_borrow_loaned_request", "rmw_send_loaned_request",
+    "rmw_return_loaned_request_from_client", "rmw_take_loaned_response",
+    "rmw_return_loaned_response_from_client"};
+  const char * const service[] = {
+    "rmw_create_service_with_context", "rmw_take_loaned_request",
+    "rmw_return_loaned_request_from_service", "rmw_borrow_loaned_response",
+    "rmw_send_loaned_response", "rmw_return_loaned_response_from_service"};
+  const char * const * names;
+  size_t count;
+  switch (role) {
+    case RMW_REGION_LOAN_PUBLISHER:
+      names = publisher; count = sizeof(publisher) / sizeof(publisher[0]); break;
+    case RMW_REGION_LOAN_SUBSCRIPTION:
+      names = subscription; count = sizeof(subscription) / sizeof(subscription[0]); break;
+    case RMW_REGION_LOAN_CLIENT:
+      names = client; count = sizeof(client) / sizeof(client[0]); break;
+    case RMW_REGION_LOAN_SERVICE:
+      names = service; count = sizeof(service) / sizeof(service[0]); break;
+    default:
+      RMW_SET_ERROR_MSG("invalid region loan role");
+      return RMW_RET_INVALID_ARGUMENT;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    bool failed;
+    auto symbol = get_optional_symbol(names[i], failed);
+    if (failed) {
+      return RMW_RET_ERROR;
+    }
+    if (!symbol) {
+      *available = false;
+      return RMW_RET_OK;
+    }
+  }
+  *available = true;
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_region_loan_type_support_available(
+  rmw_region_loan_role_t role,
+  const rosidl_message_type_support_t * first_type,
+  const rosidl_runtime_c__message_context_t * first_context,
+  const rosidl_message_type_support_t * second_type,
+  const rosidl_runtime_c__message_context_t * second_context,
+  bool * available)
+{
+  RMW_CHECK_ARGUMENT_FOR_NULL(first_type, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_ARGUMENT_FOR_NULL(available, RMW_RET_INVALID_ARGUMENT);
+  if ((role == RMW_REGION_LOAN_PUBLISHER || role == RMW_REGION_LOAN_SUBSCRIPTION) ?
+    (second_type || second_context) :
+    ((role != RMW_REGION_LOAN_CLIENT && role != RMW_REGION_LOAN_SERVICE) || !second_type))
+  {
+    RMW_SET_ERROR_MSG("invalid region loan role or type arguments");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  bool failed;
+  auto symbol = get_optional_symbol("rmw_region_loan_type_support_available", failed);
+  if (failed) {
+    return RMW_RET_ERROR;
+  }
+  if (!symbol) {
+    *available = false;
+    return RMW_RET_OK;
+  }
+  auto function = reinterpret_cast<decltype(& rmw_region_loan_type_support_available)>(symbol);
+  return function(role, first_type, first_context, second_type, second_context, available);
+}
+
+rmw_ret_t
+rmw_region_client_can_loan_messages(const rmw_client_t * client, bool * available)
+{
+  return call_optional_service_capability<decltype(&rmw_region_client_can_loan_messages)>(
+    "rmw_region_client_can_loan_messages", client, available);
+}
+
+rmw_ret_t
+rmw_region_service_can_loan_messages(const rmw_service_t * service, bool * available)
+{
+  return call_optional_service_capability<decltype(&rmw_region_service_can_loan_messages)>(
+    "rmw_region_service_can_loan_messages", service, available);
+}
+
 rmw_publisher_t *
 rmw_create_publisher_with_context(
   const rmw_node_t * node,

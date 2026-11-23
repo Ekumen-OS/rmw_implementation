@@ -132,6 +132,15 @@ else()
       rcpputils::rcpputils rcutils::rcutils)
     add_dependencies(test_context_dispatch rmw_context_test_backend)
 
+    add_library(rmw_context_partial_backend SHARED test/context_partial_backend.cpp)
+    target_link_libraries(rmw_context_partial_backend rmw::rmw)
+    configure_rmw_library(rmw_context_partial_backend)
+    ament_add_gtest(test_context_partial test/test_context_partial.cpp
+      ENV RMW_IMPLEMENTATION=rmw_context_partial_backend
+      APPEND_LIBRARY_DIRS $<TARGET_FILE_DIR:rmw_context_partial_backend>)
+    target_link_libraries(test_context_partial ${PROJECT_NAME} rmw::rmw)
+    add_dependencies(test_context_partial rmw_context_partial_backend)
+
     find_package(performance_test_fixture REQUIRED)
 
     macro(benchmark_rmws)

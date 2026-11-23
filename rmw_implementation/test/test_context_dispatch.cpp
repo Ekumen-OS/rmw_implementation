@@ -18,6 +18,73 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
+TEST(ContextDispatch, region_loan_entry_points_are_available) {
+  for (auto role : {
+    RMW_REGION_LOAN_PUBLISHER, RMW_REGION_LOAN_SUBSCRIPTION,
+    RMW_REGION_LOAN_CLIENT, RMW_REGION_LOAN_SERVICE})
+  {
+    bool available = false;
+    ASSERT_EQ(RMW_RET_OK, rmw_region_loan_entry_points_available(role, &available));
+    EXPECT_TRUE(available);
+  }
+  bool available = false;
+  EXPECT_EQ(
+    RMW_RET_INVALID_ARGUMENT,
+    rmw_region_loan_entry_points_available(static_cast<rmw_region_loan_role_t>(-1), &available));
+  rmw_reset_error();
+  EXPECT_EQ(
+    RMW_RET_INVALID_ARGUMENT,
+    rmw_region_loan_entry_points_available(RMW_REGION_LOAN_PUBLISHER, nullptr));
+  rmw_reset_error();
+}
+
+TEST(ContextDispatch, service_capability_query_forwards_results_and_errors) {
+  rcpputils::SharedLibrary backend(
+    rcpputils::get_platform_library_name("rmw_context_test_backend"));
+  auto set_capability = reinterpret_cast<void (*)(rmw_ret_t, bool)>(
+    backend.get_symbol("context_test_set_capability"));
+  rmw_client_t client{};
+  rmw_service_t service{};
+  bool available = false;
+  set_capability(RMW_RET_OK, true);
+  EXPECT_EQ(RMW_RET_OK, rmw_region_client_can_loan_messages(&client, &available));
+  EXPECT_TRUE(available);
+  set_capability(RMW_RET_OK, false);
+  EXPECT_EQ(RMW_RET_OK, rmw_region_service_can_loan_messages(&service, &available));
+  EXPECT_FALSE(available);
+  set_capability(RMW_RET_ERROR, false);
+  EXPECT_EQ(RMW_RET_ERROR, rmw_region_client_can_loan_messages(&client, &available));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  set_capability(RMW_RET_OK, true);
+}
+
+TEST(ContextDispatch, type_capability_query_forwards_results_and_errors) {
+  rcpputils::SharedLibrary backend(
+    rcpputils::get_platform_library_name("rmw_context_test_backend"));
+  auto set_capability = reinterpret_cast<void (*)(rmw_ret_t, bool)>(
+    backend.get_symbol("context_test_set_capability"));
+  rosidl_message_type_support_t type{};
+  bool available = false;
+  set_capability(RMW_RET_OK, true);
+  EXPECT_EQ(
+    RMW_RET_OK, rmw_region_loan_type_support_available(
+      RMW_REGION_LOAN_PUBLISHER, &type, nullptr, nullptr, nullptr, &available));
+  EXPECT_TRUE(available);
+  set_capability(RMW_RET_OK, false);
+  EXPECT_EQ(
+    RMW_RET_OK, rmw_region_loan_type_support_available(
+      RMW_REGION_LOAN_CLIENT, &type, nullptr, &type, nullptr, &available));
+  EXPECT_FALSE(available);
+  set_capability(RMW_RET_ERROR, false);
+  EXPECT_EQ(
+    RMW_RET_ERROR, rmw_region_loan_type_support_available(
+      RMW_REGION_LOAN_SUBSCRIPTION, &type, nullptr, nullptr, nullptr, &available));
+  EXPECT_TRUE(rmw_error_is_set());
+  rmw_reset_error();
+  set_capability(RMW_RET_OK, true);
+}
+
 TEST(ContextDispatch, independent_retained_baselines_and_refinements) {
   size_t publisher_specific = 7;
   size_t subscription_specific = 3;

@@ -21,6 +21,18 @@
 #define STRINGIFY_(s) #s
 #define STRINGIFY(s) STRINGIFY_(s)
 
+TEST(ContextDispatch, fixed_backend_reports_loan_entry_points)
+{
+  rcpputils::SharedLibrary library(
+    rcpputils::get_platform_library_name(STRINGIFY(DEFAULT_RMW_IMPLEMENTATION)));
+  const bool expected = library.has_symbol("rmw_create_publisher_with_context") &&
+    library.has_symbol("rmw_borrow_loaned_message_with_context");
+  bool available = !expected;
+  EXPECT_EQ(
+    RMW_RET_OK, rmw_region_loan_entry_points_available(RMW_REGION_LOAN_PUBLISHER, &available));
+  EXPECT_EQ(expected, available);
+}
+
 TEST(ContextDispatch, fixed_backend_rejects_unsupported_context) {
   rcpputils::SharedLibrary library(
     rcpputils::get_platform_library_name(STRINGIFY(DEFAULT_RMW_IMPLEMENTATION)));

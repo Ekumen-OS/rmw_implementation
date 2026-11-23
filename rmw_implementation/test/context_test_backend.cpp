@@ -30,6 +30,8 @@ size_t subscription_limit;
 size_t publisher_specific_limit;
 size_t subscription_specific_limit;
 size_t sample_size = 40;
+rmw_ret_t capability_result = RMW_RET_OK;
+bool capability_available = true;
 
 bool compatible(
   const rosidl_runtime_c__message_context_t * context, size_t baseline, size_t specific_baseline)
@@ -42,6 +44,16 @@ bool compatible(
   return (requested == 0 || requested <= baseline) &&
          (!specific || *specific == 0 || *specific <= specific_baseline);
 }
+
+rmw_ret_t test_service_capability(bool * available)
+{
+  if (capability_result != RMW_RET_OK) {
+    RMW_SET_ERROR_MSG("injected capability query error");
+    return capability_result;
+  }
+  *available = capability_available;
+  return RMW_RET_OK;
+}
 }  // namespace
 
 extern "C"
@@ -50,6 +62,34 @@ RMW_PUBLIC
 void context_test_set_sample_size(size_t size)
 {
   sample_size = size;
+}
+
+RMW_PUBLIC
+void context_test_set_capability(rmw_ret_t result, bool available)
+{
+  capability_result = result;
+  capability_available = available;
+}
+
+rmw_ret_t
+rmw_region_loan_type_support_available(
+  rmw_region_loan_role_t, const rosidl_message_type_support_t *,
+  const rosidl_runtime_c__message_context_t *, const rosidl_message_type_support_t *,
+  const rosidl_runtime_c__message_context_t *, bool * available)
+{
+  return test_service_capability(available);
+}
+
+rmw_ret_t
+rmw_region_client_can_loan_messages(const rmw_client_t *, bool * available)
+{
+  return test_service_capability(available);
+}
+
+rmw_ret_t
+rmw_region_service_can_loan_messages(const rmw_service_t *, bool * available)
+{
+  return test_service_capability(available);
 }
 
 rmw_publisher_t *
